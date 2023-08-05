@@ -3,7 +3,7 @@
 
 ## 转换命令
 
-./convert -f xxx.xlsx -o xxx.csv
+./convert -f xxx.xlsx -o filename -s .csv
 
 
 ## 注意

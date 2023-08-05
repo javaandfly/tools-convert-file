@@ -7,16 +7,19 @@ import (
 	"log"
 	"os"
 	"path"
+	"strings"
 
 	"github.com/tealeg/xlsx"
 	"github.com/urfave/cli"
 )
 
 const (
-	fileFlag        = "file"
-	fileShortFlag   = "f"
-	fileIOFlag      = "output"
-	fileIOShortFlag = "o"
+	fileFlag            = "file"
+	fileShortFlag       = "f"
+	fileIOFlag          = "output"
+	fileIOShortFlag     = "o"
+	fileSuffixShortFlag = "s"
+	fileSuffixFlag      = "suffix"
 )
 
 func main() {
@@ -35,6 +38,10 @@ func main() {
 				Name:  fileIOFlag + "," + fileIOShortFlag,
 				Usage: "file io",
 			},
+			&cli.StringFlag{
+				Name:  fileSuffixFlag + "," + fileSuffixShortFlag,
+				Usage: "file suffix",
+			},
 		},
 		Action: MainAction,
 	}
@@ -49,21 +56,38 @@ func main() {
 func MainAction(c *cli.Context) (err error) {
 	filePath := c.String(fileFlag)
 	fileIOPath := c.String(fileIOFlag)
-	if fileIOPath == "" || filePath == "" {
+	fileIOType := c.String(fileSuffixFlag)
+	if fileIOPath == "" || filePath == "" || fileSuffixFlag == "" {
 		err = fmt.Errorf("param error")
 		return err
 	}
-	fileType := path.Ext(filePath)
-	fileIOType := path.Ext(fileIOPath)
-	switch {
-	case fileType == ".xlsx", fileIOType == ".csv":
-		err = convFileXlsxToCsv(fileIOPath, filePath)
-
-	default:
-		err = fmt.Errorf("sorry not currently supported")
-	}
+	_, err = os.Stat(fileIOPath)
 	if err != nil {
-		return err
+		err := os.Mkdir(fileIOPath, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+	files := strings.Split(filePath, ",")
+	for _, file := range files {
+
+		fileType := path.Ext(file)
+
+		switch {
+		case fileType == ".xlsx", fileIOType == ".csv":
+			strs := strings.Split(file, "/")
+			fileName := strings.Split(strs[len(strs)-1], ".")
+			path := fmt.Sprintf("%s/%s", fileIOPath, fileName[0])
+			fmt.Println(fileIOType)
+			err = convFileXlsxToCsv(file, path, fileIOType)
+
+		default:
+			err = fmt.Errorf("sorry not currently supported")
+		}
+		if err != nil {
+			return err
+		}
+
 	}
 	log.Println("convert success")
 	return
@@ -71,13 +95,31 @@ func MainAction(c *cli.Context) (err error) {
 
 // ConvFileExtension converts file to another file, different file extension
 // is supported
-func convFileXlsxToCsv(newFileName string, oldFileName string) error {
+func convFileXlsxToCsv(oldFileName, newFileName, fileType string) error {
 	f, err := xlsx.OpenFile(oldFileName)
 	if err != nil {
 		err := fmt.Errorf("read file error %v", err)
 		return err
 	}
-	return parseSheetToCSV(f.Sheets[0], newFileName)
+	_, err = os.Stat(newFileName)
+	if err != nil {
+		err := os.Mkdir(newFileName, os.ModePerm)
+		if err != nil {
+			return err
+		}
+	}
+
+	for _, sheet := range f.Sheets {
+		fileName := fmt.Sprintf("%s/%s%s", newFileName, sheet.Name, fileType)
+		fmt.Println(newFileName, sheet.Name, fileType)
+		err := parseSheetToCSV(sheet, fileName)
+		if err != nil {
+			err := fmt.Errorf("%s file is error is: %v", oldFileName, err)
+			return err
+		}
+	}
+	log.Printf("%s success", newFileName)
+	return nil
 }
 
 func parseSheetToCSV(sheet *xlsx.Sheet, toFile string) (err error) {
@@ -90,7 +132,7 @@ func parseSheetToCSV(sheet *xlsx.Sheet, toFile string) (err error) {
 			val := cell.Value
 			// fmt.Println(val)
 			b.WriteString(val)
-			b.WriteString("\t")
+			b.WriteString(",")
 		}
 		b.WriteString("\r\n")
 	}
